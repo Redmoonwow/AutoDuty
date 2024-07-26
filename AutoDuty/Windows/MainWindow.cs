@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Numerics;
 using AutoDuty.Helpers;
 using AutoDuty.IPC;
@@ -6,16 +7,15 @@ using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using ECommons;
-using ECommons.DalamudServices;
 using ECommons.EzSharedDataManager;
 using ECommons.Funding;
 using ECommons.ImGuiMethods;
 using ECommons.Schedulers;
 using ECommons.Throttlers;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using ImGuiNET;
 using static AutoDuty.AutoDuty;
+using static AutoDuty.Windows.ConfigTab;
 
 namespace AutoDuty.Windows;
 
@@ -26,7 +26,7 @@ public class MainWindow : Window, IDisposable
     private static bool _showPopup = false;
     private static string _popupText = "";
     private static string _popupTitle = "";
-    private string openTabName = "";
+    private static string openTabName = "";
     
     public MainWindow() : base(
         "AutoDuty", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.AlwaysAutoResize)
@@ -41,7 +41,7 @@ public class MainWindow : Window, IDisposable
         TitleBarButtons.Add(new() { ShowTooltip = () => ImGui.SetTooltip("Support Herculezz on Ko-fi"), Icon = FontAwesomeIcon.Heart, IconOffset = new(1, 1), Click = _ => GenericHelpers.ShellStart("https://ko-fi.com/Herculezz") });
     }
 
-    internal void OpenTab(string tabName)
+    internal static void OpenTab(string tabName)
     {
         openTabName = tabName;
         _ = new TickScheduler(delegate
@@ -65,8 +65,7 @@ public class MainWindow : Window, IDisposable
         {
             if (ImGui.Button("Stop"))
             {
-                Plugin.MainWindow.OpenTab("Main");
-                Plugin.Stage = 0;
+                Plugin.StopAndResetALL();
                 return;
             }
             ImGui.SameLine(0, 5);
@@ -94,15 +93,23 @@ public class MainWindow : Window, IDisposable
     {
         using (var d2 = ImRaii.Disabled(Plugin.Running || Plugin.Started))
         {
-            using (var GotoDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || DesynthHelper.DesynthRunning || ExtractHelper.ExtractRunning))
+            using (var GotoDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || DesynthHelper.DesynthRunning || ExtractHelper.ExtractRunning || RepairHelper.RepairRunning))
             {
-                if (ImGui.Button("Goto"))
+                if (GotoHelper.GotoRunning && !GCTurninHelper.GCTurninRunning && !RepairHelper.RepairRunning)
                 {
-                    ImGui.OpenPopup("GotoPopup");
+                    if (ImGui.Button("Stop Goto"))
+                        Plugin.StopAndResetALL();
+                }
+                else
+                {
+                    if (ImGui.Button("Goto"))
+                    {
+                        ImGui.OpenPopup("GotoPopup");
+                    }
                 }
             }
             ImGui.SameLine(0, 5);
-            using (var GCTurninDisabled = ImRaii.Disabled(DesynthHelper.DesynthRunning || ExtractHelper.ExtractRunning || GotoHelper.GotoRunning))
+            using (var GCTurninDisabled = ImRaii.Disabled(DesynthHelper.DesynthRunning || ExtractHelper.ExtractRunning || (GotoHelper.GotoRunning && !GCTurninHelper.GCTurninRunning) || RepairHelper.RepairRunning))
             {
                 if (GCTurninHelper.GCTurninRunning)
                 {
@@ -125,7 +132,7 @@ public class MainWindow : Window, IDisposable
                 }
             }
             ImGui.SameLine(0, 5);
-            using (var DesynthDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || ExtractHelper.ExtractRunning || GotoHelper.GotoRunning))
+            using (var DesynthDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || ExtractHelper.ExtractRunning || GotoHelper.GotoRunning || RepairHelper.RepairRunning))
             {
                 if (DesynthHelper.DesynthRunning)
                 {
@@ -140,7 +147,7 @@ public class MainWindow : Window, IDisposable
                 }
             }
             ImGui.SameLine(0, 5);
-            using (var ExtractDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || DesynthHelper.DesynthRunning || GotoHelper.GotoRunning))
+            using (var ExtractDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || DesynthHelper.DesynthRunning || GotoHelper.GotoRunning || RepairHelper.RepairRunning))
             {
                 if (ExtractHelper.ExtractRunning)
                 {
@@ -162,6 +169,29 @@ public class MainWindow : Window, IDisposable
                         ToolTip("Materia Extraction requires having completed quest: Forging the Spirit");
                 }
             }
+            ImGui.SameLine(0, 5);
+            using (var RepairDisabled = ImRaii.Disabled(GCTurninHelper.GCTurninRunning || DesynthHelper.DesynthRunning || ExtractHelper.ExtractRunning || (GotoHelper.GotoRunning && !RepairHelper.RepairRunning)))
+            {
+                if (RepairHelper.RepairRunning)
+                {
+                    if (ImGui.Button("Stop Repair"))
+                        Plugin.StopAndResetALL();
+                }
+                else
+                {
+                    if (ImGui.Button("Repair"))
+                    {
+                        //if ()
+                            RepairHelper.Invoke();
+                        //else
+                            //ShowPopup("", "");
+                    }
+                    //if ()
+                        ToolTip("Click to Repair");
+                    //else
+                        //ToolTip("");
+                }
+            }
             if (ImGui.BeginPopup("GotoPopup"))
             {
                 if (ImGui.Selectable("Barracks"))
@@ -175,10 +205,6 @@ public class MainWindow : Window, IDisposable
                 if (ImGui.Selectable("GCSupply"))
                 {
                     GotoHelper.Invoke(ObjectHelper.GrandCompanyTerritoryType(ObjectHelper.GrandCompany), [GCTurninHelper.GCSupplyLocation], 0.25f, 3f);
-                }
-                if (ImGui.Selectable("Repair"))
-                {
-                    RepairHelper.Invoke();
                 }
                 ImGui.EndPopup();
             }
@@ -243,7 +269,7 @@ public class MainWindow : Window, IDisposable
         }
     }
 
-    private void KofiLink()
+    private static void KofiLink()
     {
         OpenTab(CurrentTabName);
         if (EzThrottler.Throttle("KofiLink", 15000))
@@ -304,10 +330,21 @@ public class MainWindow : Window, IDisposable
         if (KoFiTransparent != null) PatreonBanner.RightTransparentTab();
         ImGui.EndTabBar();
     }
+
+    private static List<(string, Action, Vector4?, bool)> tabList =
+        [("Main", MainTab.Draw, null, false),("Build", BuildTab.Draw, null, false), ("Paths", PathsTab.Draw, null, false), ("Config", ConfigTab.Draw, null, false),("Mini", MiniTab.Draw, null, false), ("Support AutoDuty", KofiLink, ImGui.ColorConvertU32ToFloat4(ColorNormal), false)
+        ];
+
     public override void Draw()
     {
         DrawPopup();
-        
-        EzTabBar("MainTab", null, openTabName, ImGuiTabBarFlags.None, ("Main", MainTab.Draw, null, false), ("Build", BuildTab.Draw, null, false), ("Paths", PathsTab.Draw, null, false), ("Config", ConfigTab.Draw, null, false), ("Mini", MiniTab.Draw, null, false), ("Support AutoDuty", KofiLink, ImGui.ColorConvertU32ToFloat4(ColorNormal), false));
+
+        if (!Plugin.Configuration.HideBossModAIConfig && !tabList.Contains(("BM-Config", BossModConfigTab.Draw, null, false)))
+            tabList.Insert(4, ("BM-Config", BossModConfigTab.Draw, null, false));
+        else if (Plugin.Configuration.HideBossModAIConfig && tabList.Contains(("BM-Config", BossModConfigTab.Draw, null, false)))
+            tabList.Remove(("BM-Config", BossModConfigTab.Draw, null, false));
+
+
+        EzTabBar("MainTab", null, openTabName, ImGuiTabBarFlags.None, tabList.ToArray());
     }
 }

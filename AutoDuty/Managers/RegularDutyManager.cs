@@ -35,11 +35,11 @@ namespace AutoDuty.Managers
             _taskManager.Enqueue(() => AddonHelper.FireCallBack(addon, true, 12, 0), "RegisterRegularDuty");
             _taskManager.Enqueue(() => GenericHelpers.TryGetAddonByName("ContentsFinderConfirm", out addon) && GenericHelpers.IsAddonReady(addon), "RegisterRegularDuty");
             _taskManager.Enqueue(() => AddonHelper.FireCallBack(addon, true, 8), "RegisterRegularDuty");
-            _taskManager.Enqueue(() => Svc.ClientState.TerritoryType == content.TerritoryType, int.MaxValue, "RegisterRegularDuty");
         }
 
         private unsafe bool SelectDuty(Content content, AddonContentsFinder* addon)
         {
+            if (content.Name == null) return false;
             if (GenericHelpers.IsAddonReady(&addon->AtkUnitBase))
             {
                 var list = addon->AtkUnitBase.GetNodeById(52)->GetAsAtkComponentList();
@@ -50,7 +50,14 @@ namespace AutoDuty.Managers
                     var textNode = componentNode->GetTextNodeById(5)->GetAsAtkTextNode();
                     var buttonNode = componentNode->UldManager.NodeList[16]->GetAsAtkComponentCheckBox();
                     if (textNode is null || buttonNode is null) continue;
-                    if (textNode->NodeText.ToString() == content.Name)
+                    if (textNode->NodeText.ToString().EndsWith("..."))
+                    {
+                        var textnode = textNode->NodeText.ToString().Replace("...", "");
+                        var len = textnode.Length;
+                        if (content.Name.Substring(0, len).Equals(textnode))
+                            buttonNode->ClickCheckboxButton(componentNode, 0);
+                    }
+                    else if (textNode->NodeText.ToString() == content.Name)
                         buttonNode->ClickCheckboxButton(componentNode, 0);
                 }
                 return true;

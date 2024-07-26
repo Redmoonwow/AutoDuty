@@ -19,6 +19,7 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace AutoDuty.Managers
 {
+    using global::AutoDuty.Windows;
     using System.Text.RegularExpressions;
 
     internal class ActionsManager(AutoDuty _plugin, Chat _chat, TaskManager _taskManager)
@@ -78,8 +79,8 @@ namespace AutoDuty.Managers
 
         public unsafe void ForceAttack()
         {
-            ActionManager.Instance()->UseAction(ActionType.GeneralAction, 16);
-            ActionManager.Instance()->UseAction(ActionType.GeneralAction, 1);
+            _taskManager.Enqueue(() => ActionManager.Instance()->UseAction(ActionType.GeneralAction, 16), "ForceAttack");
+            _taskManager.Enqueue(() => ActionManager.Instance()->UseAction(ActionType.GeneralAction, 1), "ForceAttack");
         }
 
         public unsafe void Jump(string automoveTime)
@@ -88,18 +89,18 @@ namespace AutoDuty.Managers
 
             if (int.TryParse(automoveTime, out int wait) && wait > 0)
             {
-                _taskManager.Enqueue(() => _chat.ExecuteCommand("/automove on"), "Jump Move");
-                _taskManager.Enqueue(() => EzThrottler.Throttle("AutoMove", Convert.ToInt32(wait)), "AutoMove");
-                _taskManager.Enqueue(() => EzThrottler.Check("AutoMove"), Convert.ToInt32(wait), "AutoMove");
+                _taskManager.Enqueue(() => _chat.ExecuteCommand("/automove on"), "Jump");
+                _taskManager.Enqueue(() => EzThrottler.Throttle("AutoMove", Convert.ToInt32(wait)), "Jump");
+                _taskManager.Enqueue(() => EzThrottler.Check("AutoMove"), Convert.ToInt32(wait), "Jump");
             }
 
             _taskManager.Enqueue(() => ActionManager.Instance()->UseAction(ActionType.GeneralAction, 2), "Jump");
 
             if(wait > 0)
             {
-                _taskManager.Enqueue(() => EzThrottler.Throttle("AutoMove", Convert.ToInt32(100)), "AutoMove");
+                _taskManager.Enqueue(() => EzThrottler.Throttle("AutoMove", Convert.ToInt32(100)), "Jump");
                 _taskManager.Enqueue(() => EzThrottler.Check("AutoMove"),                           Convert.ToInt32(100), "AutoMove");
-                _taskManager.Enqueue(() => _chat.ExecuteCommand("/automove off"),                   "Jump Move");
+                _taskManager.Enqueue(() => _chat.ExecuteCommand("/automove off"), "Jump");
             }
         }
         
@@ -124,15 +125,13 @@ namespace AutoDuty.Managers
             _taskManager.Enqueue(() => _chat.ExecuteCommand("/automove off"), "AutoMove");
         }
 
-        public void Wait(string wait)
+        public unsafe void Wait(string wait)
         {
-            if (AutoDuty.Plugin.Player == null)
-                return;
             AutoDuty.Plugin.Action = $"Wait: {wait}";
-            _taskManager.Enqueue(() => !ObjectHelper.InCombat(AutoDuty.Plugin.Player), int.MaxValue, "Wait");
+            _taskManager.Enqueue(() => !Player.Character->InCombat, int.MaxValue, "Wait");
             _taskManager.Enqueue(() => EzThrottler.Throttle("Wait", Convert.ToInt32(wait)), "Wait");
             _taskManager.Enqueue(() => EzThrottler.Check("Wait"), Convert.ToInt32(wait), "Wait");
-            _taskManager.Enqueue(() => !ObjectHelper.InCombat(AutoDuty.Plugin.Player), int.MaxValue, "Wait");
+            _taskManager.Enqueue(() => !Player.Character->InCombat, int.MaxValue, "Wait");
             _taskManager.Enqueue(() => AutoDuty.Plugin.Action = "");
         }
 
@@ -165,8 +164,8 @@ namespace AutoDuty.Managers
 
         public unsafe void ExitDuty(string _)
         {
-            _taskManager.Enqueue(() => ExitDutyHelper.Invoke(), "ExitDuty-Invoke");
-            _taskManager.Enqueue(() => !ExitDutyHelper.ExitDutyRunning, int.MaxValue, "ExitDuty-WaitExitDutyRunnning");
+            _taskManager.Enqueue(() => !Player.Character->InCombat, "ExitDuty-Invoke");
+            _taskManager.Enqueue(() => { ExitDutyHelper.Invoke(); }, "ExitDuty-Invoke");
             _taskManager.Enqueue(() => !ObjectHelper.IsReady, "ExitDuty-WaitPlayerNotReady");
             _taskManager.Enqueue(() => ObjectHelper.IsReady, int.MaxValue, "ExitDuty-WaitPlayerReady");
         }
@@ -193,8 +192,6 @@ namespace AutoDuty.Managers
 
         public void TreasureCoffer(string _) 
         {
-            if (AutoDuty.Plugin.Configuration.LootTreasure && !AutoDuty.Plugin.Configuration.LootBossTreasureOnly)
-                Interactable("Treasure Coffer");
             return;
         }
 
@@ -325,7 +322,6 @@ namespace AutoDuty.Managers
                 {
                     VNavmesh_IPCSubscriber.Nav_PathfindCancelAll();
                     VNavmesh_IPCSubscriber.Path_Stop();
-                    _chat.ExecuteCommand("/vnavmesh stop");
                     FollowHelper.SetFollow(null);
                 }
             }
@@ -340,11 +336,10 @@ namespace AutoDuty.Managers
             }
             return MovementHelper.Move(bossV3);
         }
-            
+
         public void Boss(Vector3 bossV3)
         {
             Svc.Log.Info($"Starting Action Boss: {AutoDuty.Plugin.BossObject?.Name.TextValue ?? "null"}");
-            ReflectionHelper.RotationSolver_Reflection.RotationAuto();
             IGameObject? followTargetObject = null;
             IGameObject? treasureCofferObject = null;
             var hasModule = false;
@@ -378,30 +373,38 @@ namespace AutoDuty.Managers
             //switch our class type
             _taskManager.Enqueue(() =>
             {
-                if (!IPCSubscriber_Common.IsReady("BossModReborn"))
+
+                if (hasModule)
                 {
-                    if (hasModule)
-                    {
+                    if (IPCSubscriber_Common.IsReady("BossModReborn") && AutoDuty.Plugin.Configuration.AutoManageBossModAISettings)
+                        AutoDuty.Plugin.SetBMRSettings();
+                    else
                         followTargetObject = AutoDuty.Plugin.BossObject;
-                        return;
-                    }
-                    switch (Player.Object.ClassJob.GameData?.Role)
-                    {
-                        //tank
-                        case 1:
-                            followTargetObject = GetTrustMeleeDpsMemberObject() ?? GetTrustRangedDpsMemberObject();
-                            break;
-                        //melee
-                        case 2:
-                            followTargetObject = GetTrustMeleeDpsMemberObject() ?? GetTrustTankMemberObject();
-                            break;
-                        //ranged or healer
-                        case 3 or 4:
-                            followTargetObject = GetTrustRangedDpsMemberObject() ?? GetTrustMeleeDpsMemberObject();
-                            break;
-                    }
-                    if (!IPCSubscriber_Common.IsReady("BossModReborn"))
-                        FollowHelper.SetFollow(followTargetObject, 0);
+                    return;
+                }
+                switch (Player.Object.ClassJob.GameData?.Role)
+                {
+                    //tank
+                    case 1:
+                        followTargetObject = GetTrustMeleeDpsMemberObject() ?? GetTrustRangedDpsMemberObject();
+                        break;
+                    //melee
+                    case 2:
+                        followTargetObject = GetTrustMeleeDpsMemberObject() ?? GetTrustTankMemberObject();
+                        break;
+                    //ranged or healer
+                    case 3 or 4:
+                        followTargetObject = GetTrustRangedDpsMemberObject() ?? GetTrustMeleeDpsMemberObject();
+                        break;
+                }
+                if (!IPCSubscriber_Common.IsReady("BossModReborn"))
+                    FollowHelper.SetFollow(followTargetObject, 0);
+                else if(AutoDuty.Plugin.Configuration.AutoManageBossModAISettings)
+                {
+                    AutoDuty.Plugin.SetBMRSettings();
+                    _chat.ExecuteCommand($"/vbm cfg AIConfig FollowTarget false");
+                    _chat.ExecuteCommand($"/vbmai follow {followTargetObject?.Name.TextValue ?? "Slot3"}");
+                    _chat.ExecuteCommand($"/vbmai positional Any");
                 }
             }, "Boss-CheckModule2");
             _taskManager.Enqueue(() => Svc.Condition[ConditionFlag.InCombat], "Boss-WaitInCombat");
@@ -417,8 +420,12 @@ namespace AutoDuty.Managers
             }
             _taskManager.DelayNext("Boss-Delay500", 500);
             _taskManager.Enqueue(() => { AutoDuty.Plugin.Action = ""; }, "Boss-ClearActionVar");
+            _taskManager.Enqueue(() =>
+            {
+                if (IPCSubscriber_Common.IsReady("BossModReborn") && AutoDuty.Plugin.Configuration.AutoManageBossModAISettings)
+                    AutoDuty.Plugin.SetBMRSettings();
+            }, "Boss-SetFollowTargetBMR");
         }
-
         public void PausePandora(string featureName, string intMs)
         {
             if(PandorasBox_IPCSubscriber.IsEnabled)

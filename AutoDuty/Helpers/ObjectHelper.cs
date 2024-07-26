@@ -103,6 +103,8 @@ namespace AutoDuty.Helpers
 
         internal unsafe static uint GrandCompany => UIState.Instance()->PlayerState.GrandCompany;
 
+        internal unsafe static uint GrandCompanyRank => UIState.Instance()->PlayerState.GetGrandCompanyRank();
+
         internal static float JobRange
         {
             get
@@ -125,7 +127,7 @@ namespace AutoDuty.Helpers
         {
             get
             {
-                float radius = 12;
+                float radius = 10;
                 if (!Player.Available) return radius;
                 switch (Svc.Data.GetExcelSheet<ClassJob>()?.GetRow(
                     Player.Object.ClassJob.Id)?.GetJobRole() ?? JobRole.None)

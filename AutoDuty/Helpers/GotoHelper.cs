@@ -8,7 +8,7 @@ using AutoDuty.IPC;
 
 namespace AutoDuty.Helpers
 {
-    internal unsafe static class GotoHelper
+    internal static class GotoHelper
     {
         internal static void Invoke(uint territoryType, List<Vector3> moveLocations, float tollerance = 0.25f, float lastPointTollerance = 0.25f)
         {
@@ -48,7 +48,7 @@ namespace AutoDuty.Helpers
         private static float _tollerance = 0.25f;
         private static float _lastPointTollerance = 0.25f;
 
-        internal static unsafe void GotoUpdate(IFramework framework)
+        internal unsafe static void GotoUpdate(IFramework framework)
         {
             if (AutoDuty.Plugin.Started)
                 Stop();
@@ -63,7 +63,7 @@ namespace AutoDuty.Helpers
             if (Svc.ClientState.LocalPlayer == null)
                 return;
 
-            if (!ObjectHelper.IsValid || ObjectHelper.PlayerIsCasting || ObjectHelper.IsJumping || !VNavmesh_IPCSubscriber.Nav_IsReady() || ExitDutyHelper.ExitDutyRunning)
+            if (!ObjectHelper.IsValid || ObjectHelper.PlayerIsCasting || ObjectHelper.IsJumping || !VNavmesh_IPCSubscriber.Nav_IsReady())
                 return;
 
             if (AutoDuty.Plugin.InDungeon)
